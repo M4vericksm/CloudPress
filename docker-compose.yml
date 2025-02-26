@@ -1,0 +1,55 @@
+version: '3.8'
+services:
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress
+    ports:
+      - "8080:80"
+    volumes:
+      - wordpress_data:/var/www/html
+      - ./wordpress/wp-config.php:/var/www/html/wp-config.php
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: senha_segura
+      WORDPRESS_DB_NAME: wordpress
+    depends_on:
+      - db
+
+  db:
+    image: mysql:5.7
+    container_name: db
+    environment:
+      MYSQL_ROOT_PASSWORD: senha_segura
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: senha_segura
+    volumes:
+      - db_data:/var/lib/mysql
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certbot:/etc/letsencrypt
+    depends_on:
+      - wordpress
+
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: always
+
+volumes:
+  wordpress_data:
+  db_data:
+  portainer_data:
