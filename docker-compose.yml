@@ -1,42 +1,23 @@
-version: '3.8'
+version: '3.8'  # Mantive a versão mais recente
 
 services:
-  db:
-    image: mysql:latest
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: senha_segura
-    volumes:
-      - db_data:/var/lib/mysql
-
   wordpress:
     image: wordpress:latest
     restart: always
-    environment:
-      WORDPRESS_DB_HOST: db
-      WORDPRESS_DB_USER: admin
-      WORDPRESS_DB_PASSWORD: senha_segura
-      WORDPRESS_DB_NAME: wordpress
-    volumes:
-      - ./wordpress:/var/www/html
-    depends_on:
-      - db
-
-  nginx:
-    image: nginx:latest
-    restart: always
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/certbot/www:/var/www/certbot
-      - ./nginx/certbot/conf:/etc/letsencrypt
     ports:
       - "80:80"
-      - "443:443"
-    depends_on:
-      - wordpress
+    environment:
+      WORDPRESS_DB_HOST: dbproject.us-east-1.rds.amazonaws.com
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: senha_segura
+      WORDPRESS_DB_NAME: wordpressdb
+    volumes:
+      - wp_data:/var/www/html
 
 volumes:
-  db_data:
+  wp_data:
+    driver: local
+    driver_opts:
+      type: "nfs"
+      o: "addr=fs-1234567c8910e8485.efs.us-east-1.amazonaws.com,nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2"
+      device: ":/"
