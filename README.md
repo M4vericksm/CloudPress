@@ -1,5 +1,19 @@
+# CloudPress: Implantação de WordPress na AWS
 
-# Guia Completo: Infraestrutura WordPress na AWS com Docker, RDS e EFS
+Infraestrutura automatizada para deploy de WordPress na AWS utilizando os seguintes serviços:
+
+- **Componentes Principais:**
+  - **AWS EC2**: Instâncias para hospedagem dos containers
+  - **AWS RDS**: Banco de dados MySQL gerenciado
+  - **AWS EFS**: Armazenamento persistente compartilhado
+  - **Docker Compose**: Orquestração de containers
+
+**Arquitetura Básica:**
+1. VPC com sub-redes públicas/privadas
+2. Grupo de Segurança para cada camada (EC2, RDS, EFS)
+3. Cluster RDS MySQL em multi-AZ
+4. Sistema de arquivos EFS montado nas instâncias EC2
+5. Load Balancer para distribuição de tráfego
 
 ## 1. Configuração da Rede AWS
 
