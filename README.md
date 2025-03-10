@@ -23,14 +23,6 @@ Infraestrutura automatizada para deploy de WordPress na AWS utilizando os seguin
    - **Name tag:** `WordPress-VPC`
    - **IPv4 CIDR:** `10.0.0.0/16`
 
-### 1.2. Criar Sub-redes
-| Tipo        | Nome               | AZ         | CIDR         |
-|-------------|--------------------|------------|--------------|
-| Pública     | Public-Subnet-AZ1  | us-east-1a | 10.0.1.0/24  |
-| Pública     | Public-Subnet-AZ2  | us-east-1b | 10.0.3.0/24  |
-| Privada     | Private-Subnet-AZ1 | us-east-1a | 10.0.2.0/24  |
-| Privada     | Private-Subnet-AZ2 | us-east-1b | 10.0.4.0/24  |
-
 ### 1.3. Configurar Internet Gateway
 1. Crie um Internet Gateway (`WordPress-IGW`)
 2. Anexe à VPC
