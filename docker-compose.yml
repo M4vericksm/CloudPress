@@ -1,69 +1,42 @@
 version: '3.8'
 
 services:
+  db:
+    image: mysql:latest
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: senha_segura
+    volumes:
+      - db_data:/var/lib/mysql
+
   wordpress:
     image: wordpress:latest
-    container_name: wordpress
     restart: always
-    ports:
-      - "8080:80"
-    volumes:
-      - wordpress_data:/var/www/html
-      - ./wordpress/wp-config.php:/var/www/html/wp-config.php
     environment:
-      WORDPRESS_DB_HOST: cloudpressdb.c34i0ekos05a.us-east-1.rds.amazonaws.com
+      WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: admin
-      WORDPRESS_DB_PASSWORD: sua-senha-segura
+      WORDPRESS_DB_PASSWORD: senha_segura
       WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./wordpress:/var/www/html
     depends_on:
-      - nginx
       - db
 
   nginx:
     image: nginx:latest
-    container_name: nginx
     restart: always
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certbot/www:/var/www/certbot
+      - ./nginx/certbot/conf:/etc/letsencrypt
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/certbot:/etc/letsencrypt
     depends_on:
       - wordpress
 
-  db:
-    image: mysql:8.0
-    container_name: mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: sua-senha-root
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: sua-senha-segura
-    volumes:
-      - db_data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      retries: 3
-      timeout: 5s
-
-  portainer:
-    image: portainer/portainer-ce
-    container_name: portainer
-    restart: always
-    ports:
-      - "9000:9000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-
 volumes:
-  wordpress_data:
-    driver_opts:
-      type: "nfs"
-      o: "addr=fs-XXXXXXXX.efs.us-east-1.amazonaws.com,nolock,soft,rw"
-      device: ":/"
   db_data:
-  portainer_data:
