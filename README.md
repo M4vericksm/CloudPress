@@ -1,177 +1,212 @@
-# CloudPress
 
-**CloudPress** é uma infraestrutura automatizada para implantar o WordPress na AWS utilizando Docker, RDS, EFS e Load Balancer, garantindo alta disponibilidade e escalabilidade.
+# Guia Completo: Infraestrutura WordPress na AWS com Docker, RDS e EFS
 
----
+## 1. Configuração da Rede AWS
 
-## 📌 Sumário
+### 1.1. Criar VPC
+1. Acesse **AWS Console → VPC → Your VPCs → Create VPC**
+2. Configure:
+   - **Name tag:** `WordPress-VPC`
+   - **IPv4 CIDR:** `10.0.0.0/16`
 
-1. [Tecnologias Utilizadas](#-tecnologias-utilizadas)
-2. [Passos para Configuração](#-passos-para-configuração)
-   - [Clonar o Repositório](#-clonar-o-repositório)
-   - [Configurar Variáveis de Ambiente](#-configurar-variáveis-de-ambiente)
-   - [Configurar Infraestrutura AWS](#-configurar-infraestrutura-aws)
-   - [Iniciar os Containers](#-iniciar-os-containers)
-   - [Configuração HTTPS](#-configuração-https)
-3. [Backup e Manutenção](#-backup-e-manutenção)
-4. [Licença](#-licença)
+### 1.2. Criar Sub-redes
+| Tipo        | Nome               | AZ         | CIDR         |
+|-------------|--------------------|------------|--------------|
+| Pública     | Public-Subnet-AZ1  | us-east-1a | 10.0.1.0/24  |
+| Pública     | Public-Subnet-AZ2  | us-east-1b | 10.0.3.0/24  |
+| Privada     | Private-Subnet-AZ1 | us-east-1a | 10.0.2.0/24  |
+| Privada     | Private-Subnet-AZ2 | us-east-1b | 10.0.4.0/24  |
 
----
+### 1.3. Configurar Internet Gateway
+1. Crie um Internet Gateway (`WordPress-IGW`)
+2. Anexe à VPC
 
-## 📌 Tecnologias Utilizadas
-
-- **AWS EC2**: Hospedagem da aplicação WordPress.
-- **AWS RDS**: Banco de dados MySQL gerenciado.
-- **AWS EFS**: Armazenamento compartilhado de arquivos.
-- **Docker & Docker Compose**: Containerização e orquestração.
-- **Nginx & Certbot**: Proxy reverso e configuração de HTTPS.
-- **Portainer**: Interface gráfica para gerenciamento de containers.
-- **No-IP**: Serviço de DNS dinâmico.
+### 1.4. Configurar NAT Gateway
+1. Aloque um Elastic IP
+2. Crie NAT Gateway na subnet pública AZ1
+3. Crie tabela de rotas para subnets privadas apontando tráfego para o NAT
 
 ---
 
-## 🔧 Passos para Configuração
+## 2. Grupos de Segurança
 
-### 1. Clonar o Repositório
+### 2.1. Load Balancer (LB-SG)
+- **Entrada:** HTTP (80) de 0.0.0.0/0
+- **Saída:** All traffic
 
-Clone o repositório do projeto para seu ambiente local:
+### 2.2. EC2 (EC2-SG)
+- **Entrada:**
+  - HTTP (80) do LB-SG
+  - SSH (22) do seu IP
+- **Saída:** All traffic
 
-```bash
-git clone https://github.com/maverick/CloudPress.git
-cd CloudPress
+### 2.3. RDS (RDS-SG)
+- **Entrada:** MySQL (3306) do EC2-SG
+
+### 2.4. EFS (EFS-SG)
+- **Entrada:** NFS (2049) do EC2-SG
+
+---
+
+## 3. Banco de Dados RDS MySQL
+
+1. **Criação do Banco:**
+   - **Engine:** MySQL
+   - **Instance class:** db.t3.micro
+   - **Storage:** 20 GiB (GP2)
+   - **Credentials:** 
+     - Usuário: `admin`
+     - Senha: `DB_P@ssw0rd!`
+   - **Network:** 
+     - VPC: `WordPress-VPC`
+     - Subnets: Private-Subnet-AZ1 e AZ2
+     - Security Group: RDS-SG
+
+2. **Criar Database Manualmente:**
+```sql
+CREATE DATABASE wordpress;
 ```
 
-### 2. Configurar Variáveis de Ambiente
+---
 
-Crie um arquivo `.env` e adicione as variáveis de ambiente para conectar a aplicação ao banco de dados e ao serviço de DNS dinâmico:
+## 4. Sistema de Arquivos EFS
 
-```bash
-DB_NAME=wordpress
-DB_USER=admin
-DB_PASSWORD=sua_senha
-DB_HOST=seu_endpoint_do_rds
-NOIP_USER=seu_usuario_noip
-NOIP_PASS=sua_senha_noip
-DOMAIN=seudominio.no-ip.com
-```
+1. **Criar File System:**
+   - Name: `wordpress-efs`
+   - VPC: `WordPress-VPC`
+   - Mount Targets: Associar às subnets privadas
 
-### 3. Configurar Infraestrutura AWS
+2. **Obter Endpoint DNS:**
+   - Exemplo: `fs-01234567.efs.us-east-1.amazonaws.com`
 
-Para configurar a infraestrutura na AWS, execute os seguintes scripts:
+---
 
-#### **Configurar EFS**
+## 5. Configuração das Instâncias EC2
 
+### 5.1. Lançar Instâncias
+- **AMI:** Amazon Linux 2
+- **Tipo:** t3.micro
+- **Network:** 
+  - Subnets privadas (AZ1 e AZ2)
+  - Security Group: EC2-SG
+
+### 5.2. Script de Inicialização (User Data)
 ```bash
 #!/bin/bash
+# Atualizar sistema
+sudo yum update -y
 
-aws efs create-file-system --creation-token "cloudpress-efs" --performance-mode generalPurpose --region us-east-1
-aws efs describe-file-systems --region us-east-1
-```
-
-#### **Configurar Load Balancer**
-
-```bash
-#!/bin/bash
-
-aws elb create-load-balancer --load-balancer-name cloudpress-lb --listeners "Protocol=HTTP,LoadBalancerPort=80,InstanceProtocol=HTTP,InstancePort=80" --subnets subnet-xyz --security-groups sg-xyz --region us-east-1
-aws elb create-lb-listeners --load-balancer-name cloudpress-lb --listeners "Protocol=HTTP,LoadBalancerPort=80,InstanceProtocol=HTTP,InstancePort=80" --region us-east-1
-```
-
-#### **Configurar EC2 e Banco de Dados**
-
-```bash
-#!/bin/bash
-
-aws ec2 run-instances --image-id ami-xyz --instance-type t2.micro --key-name seu_nome_da_chave --security-group-ids sg-xyz --subnet-id subnet-xyz --region us-east-1
-sudo apt update && sudo apt install -y docker.io
+# Instalar Docker
+sudo yum install -y docker
 sudo systemctl start docker
 sudo systemctl enable docker
-aws rds create-db-instance --db-name wordpress --db-instance-identifier wordpress-db --allocated-storage 20 --db-instance-class db.t2.micro --engine mysql --master-username admin --master-user-password sua_senha --vpc-security-group-ids sg-xyz --region us-east-1
-```
 
-### 4. Iniciar os Containers
+# Instalar EFS Utilities
+sudo yum install -y amazon-efs-utils
 
-Após configurar a infraestrutura, inicialize os containers usando Docker Compose. Crie o arquivo `docker-compose.yml` com a seguinte configuração:
+# Montar EFS
+sudo mkdir -p /mnt/efs/wordpress
+sudo mount -t efs fs-01234567:/ /mnt/efs/wordpress
+echo "fs-01234567:/ /mnt/efs/wordpress efs defaults,_netdev 0 0" | sudo tee -a /etc/fstab
 
-```yaml
-version: '3.1'
+# Configurar Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Criar docker-compose.yml
+cat <<EOF > /home/ec2-user/docker-compose.yml
+version: '3.8'
 
 services:
-  db:
-    image: mysql:5.7
-    restart: always
-    environment:
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: admin
-      MYSQL_PASSWORD: sua_senha
-      MYSQL_ROOT_PASSWORD: sua_senha
-    volumes:
-      - db_data:/var/lib/mysql
-
   wordpress:
-    image: wordpress
+    image: wordpress:6.2
     restart: always
     ports:
       - "80:80"
     environment:
-      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_HOST: wordpress-db.123456.us-east-1.rds.amazonaws.com
       WORDPRESS_DB_USER: admin
-      WORDPRESS_DB_PASSWORD: sua_senha
+      WORDPRESS_DB_PASSWORD: DB_P@ssw0rd!
       WORDPRESS_DB_NAME: wordpress
     volumes:
-      - wp_data:/var/www/html
+      - /mnt/efs/wordpress:/var/www/html/wp-content
+EOF
 
-volumes:
-  db_data:
-  wp_data:
-    driver: local
-    driver_opts:
-      type: "nfs"
-      o: "addr=fs-xyz.efs.us-east-1.amazonaws.com,rw"
-      device: ":/"
-```
-
-Execute o comando para iniciar os containers:
-
-```bash
-docker-compose up -d
-```
-
-### 5. Configuração HTTPS
-
-Para configurar HTTPS, utilize o Certbot com o Nginx para garantir uma conexão segura:
-
-```bash
-docker exec -it nginx certbot --nginx -d seudominio.no-ip.com
+# Iniciar containers
+sudo docker-compose -f /home/ec2-user/docker-compose.yml up -d
 ```
 
 ---
 
-## 🛠 Backup e Manutenção
+## 6. Application Load Balancer
 
-### **Backup do Banco de Dados**
+### 6.1. Criar ALB
+- **Name:** `WordPress-ALB`
+- **Scheme:** Internet-facing
+- **Subnets:** Public-Subnet-AZ1 e AZ2
+- **Security Group:** LB-SG
 
+### 6.2. Configurar Target Group
+- **Protocol:** HTTP:80
+- **Health Check Path:** `/wp-admin/install.php`
+- **Register Targets:** Instâncias EC2
+
+---
+
+## 7. Validação Final
+
+### 7.1. Testar Acesso ao WordPress
+- Acesse o DNS do ALB via navegador:
+  ```
+  http://wordpress-alb-1234567890.us-east-1.elb.amazonaws.com
+  ```
+
+### 7.2. Verificar EFS
 ```bash
-#!/bin/bash
-
-docker exec -it <mysql_container_id> mysqldump -u admin -p sua_senha wordpress > backup.sql
+ssh -i key.pem ec2-user@EC2_IP
+ls /mnt/efs/wordpress
+# Deve listar diretórios do WordPress
 ```
 
-### **Restauração do Banco de Dados**
-
+### 7.3. Monitorar Containers
 ```bash
-#!/bin/bash
-
-docker exec -i <mysql_container_id> mysql -u admin -p sua_senha wordpress < backup.sql
+sudo docker ps
+# Deve mostrar container WordPress rodando
 ```
 
 ---
 
-## 📜 Licença
-
-Este projeto é distribuído sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+## Diagrama da Arquitetura
+```mermaid
+graph TD
+    A[Internet] --> B[ALB]
+    B --> C[EC2 AZ1]
+    B --> D[EC2 AZ2]
+    C & D --> E[(RDS MySQL)]
+    C & D --> F[(EFS)]
 ```
 
 ---
 
-Agora, o README está em formato Markdown, com todos os scripts necessários sem comentários. O diagrama pode ser incluído separadamente como uma imagem, se necessário. Se precisar de mais ajustes, estou à disposição!
+## Considerações Importantes
+
+1. **Persistência de Dados:**
+   - Todo conteúdo do WordPress é armazenado no EFS via volume `/wp-content`
+   - Banco de dados gerenciavel via RDS
+
+2. **Escalabilidade:**
+   - Auto Scaling Group pode ser adicionado posteriormente
+   - EFS permite compartilhamento entre múltiplas instâncias
+
+3. **Segurança:**
+   - Instâncias em subnets privadas
+   - Acesso SSH restrito por IP
+   - Comunicação interna via security groups
+
+4. **Custos:**
+   - Utilizar recursos Free Tier quando possível
+   - Monitorar uso do RDS e EFS
+
+5. **Backup:**
+   - Habilitar snapshots automáticos no RDS
+   - Backup periódico do EFS via AWS Backup
