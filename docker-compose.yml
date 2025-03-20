@@ -1,23 +1,62 @@
-version: '3.8'  # Mantive a versão mais recente
+#!/bin/bash
 
+# Atualiza o sistema e instala o Docker e utilitários NFS
+yum update -y
+yum install docker -y
+
+# Inicia e habilita o Docker
+systemctl start docker
+systemctl enable docker
+
+# Adiciona o usuário ec2-user ao grupo docker
+usermod -a -G docker ec2-user
+
+# Instala o Docker Compose
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Obtém a zona de disponibilidade (AZ) da instância
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+
+# Define o IP do EFS conforme a AZ
+case $AZ in
+  "us-east-1a") EFS_IP="[ip_efs1]" ;;
+  "us-east-1b") EFS_IP="[ip_efs2]" ;;
+  *) echo "AZ desconhecida"; exit 1 ;;
+esac
+
+# Cria e monta o diretório do EFS
+mkdir -p /mnt/efs
+mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 $EFS_IP:/ /mnt/efs
+mkdir -p /mnt/efs/wordpress_data
+
+# Cria o arquivo docker-compose.yml
+cat <<EOF > /home/ec2-user/docker-compose.yml
 services:
   wordpress:
     image: wordpress:latest
-    restart: always
     ports:
       - "80:80"
     environment:
-      WORDPRESS_DB_HOST: dbproject.us-east-1.rds.amazonaws.com
-      WORDPRESS_DB_USER: wp_user
-      WORDPRESS_DB_PASSWORD: senha_segura
-      WORDPRESS_DB_NAME: wordpressdb
+      WORDPRESS_DB_HOST: [endpoint_rds]  # Exemplo: db-1.abc123.region.rds.amazonaws.com
+      WORDPRESS_DB_USER: [usuario_cloud]   # Exemplo: admin
+      WORDPRESS_DB_PASSWORD: [senha_cloud] # Exemplo: senhaUltraSegura
+      WORDPRESS_DB_NAME: wordpress
     volumes:
-      - wp_data:/var/www/html
+      - wordpress_data:/var/www/html
 
 volumes:
-  wp_data:
-    driver: local
+  wordpress_data:
     driver_opts:
       type: "nfs"
-      o: "addr=fs-1234567c8910e8485.efs.us-east-1.amazonaws.com,nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2"
+      o: "addr=\$EFS_IP,nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2"
       device: ":/"
+EOF
+
+# Ajusta as permissões do arquivo e do volume
+chown ec2-user:ec2-user /home/ec2-user/docker-compose.yml
+chown ec2-user:ec2-user /mnt/efs/wordpress_data
+
+# Executa o Docker Compose para iniciar o serviço
+sudo -u ec2-user /usr/local/bin/docker-compose -f /home/ec2-user/docker-compose.yml up -d
