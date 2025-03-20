@@ -331,9 +331,9 @@ services:
     ports:
       - "80:80"
     environment:
-      WORDPRESS_DB_HOST: [endpoint_rds]  # Exemplo: db-1.abc123.region.rds.amazonaws.com
-      WORDPRESS_DB_USER: [usuario_cloud]   # Exemplo: admin
-      WORDPRESS_DB_PASSWORD: [senha_cloud] # Exemplo: senhaUltraSegura
+      WORDPRESS_DB_HOST: [endpoint_rds]  # Ex: db-1.tim123.region.rds.amazonaws.com
+      WORDPRESS_DB_USER: [usuario_cloud]   # Ex: admin
+      WORDPRESS_DB_PASSWORD: [senha_cloud] # Ex: P0t4t0FR1es@987
       WORDPRESS_DB_NAME: wordpress
     volumes:
       - wordpress_data:/var/www/html
@@ -415,37 +415,24 @@ Utilize o console da AWS para verificar se as instâncias estão sendo lançadas
 
 ---
 
-## 9. Validação no Host EC2 <a id="9-validacao-no-host-ec2"></a>
+### 9. Validação no Host EC2
 
-Como as instâncias EC2 estão em sub-redes privadas, o acesso direto via SSH não está disponível. Para contornar isso, utilize uma das seguintes alternativas:
-
-1. Bastion Host.
-2. AWS Session Manager (SSM).
-3. EC2 Serial Console.
-4. Criação de um Endpoint da Amazon (método escolhido aqui por sua praticidade).
-
-### 9.1 Criação do Endpoint para Acesso às Instâncias
-
-- No serviço **VPC**, vá para **PrivateLink and Lattice > Endpoints > Create Endpoint**.
-- Configure:
-  - Nome: `CloudPress-EC2-AcessoEndpoint`
-  - Tipo: EC2 Instance Connect Endpoint
-  - VPC: `CloudPress-vpc`
-  - Grupo de Segurança: `CloudPress-EC2-SG`
-  - Selecione uma sub-rede privada (ex.: `CloudPress-private-1a`)
+**9.1 Criação do Endpoint para Acesso às Instâncias**  
+No serviço VPC, vá para **PrivateLink and Lattice > Endpoints > Create Endpoint** e configure:  
+- **Nome:** CloudPress-EC2-AcessoEndpoint  
+- **Tipo:** EC2 Instance Connect Endpoint  
+- **VPC:** CloudPress-vpc  
+- **Grupo de Segurança:** CloudPress-EC2-SG  
+- **Sub-rede:** Selecione uma sub-rede privada (por exemplo, CloudPress-private-1a)  
 
 > **Nota:** Mesmo que o endpoint seja criado em uma AZ específica, ele pode acessar instâncias em outras AZs, desde que as configurações de rede e segurança estejam corretas.
 
-### 9.2 Conectando-se via Endpoint
+**9.2 Conectando-se via Endpoint**  
+No console de EC2, selecione a instância desejada, clique em **Actions > Connect**, escolha o método **Connect using EC2 Instance Connect Endpoint**, utilize o usuário `ec2-user` e configure o túnel para durar até 3600 segundos.
 
-- No console de EC2, selecione a instância desejada, clique em **Actions > Connect**.
-- Escolha o método **Connect using EC2 Instance Connect Endpoint**.
-- Utilize o usuário `ec2-user` e configure o túnel para durar até 3600 segundos.
-
-### 9.3 Comandos de Verificação
-
+**9.3 Comandos de Verificação**  
 Após conectar, execute os comandos abaixo para confirmar a instalação e configuração:
-
+  
 ```bash
 docker --version
 docker-compose --version
@@ -457,8 +444,35 @@ ls -lha /mnt/efs/wordpress_data/  # Verifica o conteúdo do EFS
 
 ---
 
-## 10. Conclusão <a id="10-conclusao"></a>
+### 9.4 Sugestões de Métricas do ASG e do CloudWatch
 
-### 10.1 Resumo do Projeto
+Para garantir que a infraestrutura CloudPress esteja operando com eficiência, é fundamental monitorar métricas importantes utilizando o CloudWatch. Abaixo, algumas recomendações:
 
-Este guia ilustra a criação de uma infraestrutura robusta para hospedar o WordPress utilizando Docker na AWS sob a marca **CloudPress**. Com a integração do **RDS** (MySQL), **EFS** para armazenamento compartilhado e o uso de um **Load Balancer**, a solução garante alta disponibilidade e escalabilidade. O Auto Scaling Group possibilita a adaptação automática conforme o aumento do tráfego, otimizando recursos e custos.
+- **Métricas do Auto Scaling Group (ASG):**
+  - **GroupDesiredCapacity:** Número desejado de instâncias configurado no ASG.
+  - **GroupInServiceInstances:** Quantidade de instâncias atualmente em serviço.
+  - **GroupPendingInstances:** Instâncias em processo de inicialização.
+  - **GroupTerminatingInstances:** Instâncias que estão sendo finalizadas.
+  - **Scaling Activities:** Eventos de escalonamento (adição ou remoção de instâncias), que ajudam a identificar picos de demanda e atividades anormais.
+
+- **Métricas do CloudWatch para as Instâncias EC2:**
+  - **CPUUtilization:** Percentual de uso da CPU de cada instância.
+  - **NetworkIn / NetworkOut:** Quantidade de dados que entram e saem das instâncias.
+  - **DiskReadOps / DiskWriteOps:** Operações de leitura e escrita no disco.
+  - **StatusCheckFailed:** Falhas nos testes de status que podem indicar problemas de saúde da instância.
+  
+- **Dashboard e Alarmes:**
+  - **Criação de Dashboards:** Utilize o CloudWatch Dashboards para visualizar todas as métricas em um único painel.
+  - **Configuração de Alarmes:** Configure alarmes para alertar em caso de anomalias, como aumento súbito de CPU, queda no número de instâncias em serviço ou falhas repetidas nas verificações de status.
+
+Essas métricas e práticas de monitoramento ajudam na identificação proativa de problemas e garantem que o ambiente CloudPress mantenha alta disponibilidade e desempenho.
+
+---
+
+### 10. Conclusão
+
+#### 10.1 Resumo do Projeto  
+Este guia ilustra a criação de uma infraestrutura robusta para hospedar o WordPress utilizando Docker na AWS sob a marca CloudPress. Com a integração do RDS (MySQL), do EFS para armazenamento compartilhado e do Load Balancer, a solução garante alta disponibilidade e escalabilidade. O Auto Scaling Group possibilita a adaptação automática conforme o aumento do tráfego, otimizando recursos e custos.
+
+#### 10.2 Considerações Finais  
+A adoção de métricas monitoradas via CloudWatch, juntamente com os relatórios do ASG, assegura uma visão clara do desempenho e da saúde do ambiente. Essas práticas permitem ajustes rápidos e eficientes, contribuindo para a confiabilidade e a resiliência da aplicação.
